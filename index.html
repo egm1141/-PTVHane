@@ -827,7 +827,7 @@ body::before {
   <video id="videoPlayer" autoplay onclick="togglePlay()"></video>
 
   <!-- Error -->
-  <div id="playerError" style="display:none;position:absolute;bottom:90px;left:50%;transform:translateX(-50%);text-align:center;padding:10px 20px;font-size:13px;color:var(--accent2);background:rgba(0,0,0,0.7);border-radius:10px;border:1px solid rgba(255,101,132,0.3);z-index:20;white-space:nowrap;"></div>
+  <div id="playerError" style="display:none;position:absolute;bottom:110px;left:50%;transform:translateX(-50%);text-align:center;padding:14px 20px;font-size:13px;color:var(--accent2);background:rgba(8,12,20,0.95);border-radius:12px;border:1px solid rgba(255,101,132,0.3);z-index:20;white-space:normal;max-width:400px;line-height:1.6;"></div>
 
   <!-- Custom Controls -->
   <div class="player-controls" id="playerControls">
@@ -1188,18 +1188,67 @@ let hlsInstance = null;
 let uiHideTimer = null;
 let isSeeking = false;
 let isLive = false;
+let currentUrl = '';
+
+// CORS proxy — ilk direkt dene, hata alırsa proxy üzerinden geç
+const CORS_PROXY = 'https://corsproxy.io/?';
+
+function proxyUrl(url) {
+  return CORS_PROXY + encodeURIComponent(url);
+}
+
+function loadHls(url, useProxy) {
+  const v = document.getElementById('videoPlayer');
+  const finalUrl = useProxy ? proxyUrl(url) : url;
+
+  if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
+
+  hlsInstance = new Hls({
+    enableWorker: true,
+    lowLatencyMode: true,
+    backBufferLength: 60,
+    manifestLoadingTimeOut: 12000,
+    manifestLoadingMaxRetry: 1,
+  });
+
+  hlsInstance.loadSource(finalUrl);
+  hlsInstance.attachMedia(v);
+
+  hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+    v.play().catch(() => {});
+  });
+
+  hlsInstance.on(Hls.Events.ERROR, (_, data) => {
+    console.warn('[HLS]', data.type, data.details, useProxy ? '(proxy)' : '(direct)');
+    if (!data.fatal) return;
+
+    if (!useProxy && data.type === Hls.ErrorTypes.NETWORK_ERROR) {
+      // Direkt bağlantı başarısız → proxy ile tekrar dene
+      console.log('[HLS] CORS hatası, proxy ile tekrar deneniyor...');
+      loadHls(url, true);
+    } else if (useProxy && data.type === Hls.ErrorTypes.MEDIA_ERROR) {
+      hlsInstance.recoverMediaError();
+    } else if (useProxy) {
+      showPlayerError('Yayın açılamadı. Sunucu erişilemez durumda olabilir.', url);
+    } else {
+      loadHls(url, true);
+    }
+  });
+}
 
 function playStream(url, title) {
+  currentUrl = url;
   document.getElementById('playerTitle').textContent = title;
   const v = document.getElementById('videoPlayer');
 
   if (hlsInstance) { hlsInstance.destroy(); hlsInstance = null; }
   v.removeAttribute('src'); v.load();
+  v.onerror = null;
 
   document.getElementById('playerError').style.display = 'none';
   document.getElementById('playerModal').classList.add('open');
 
-  isLive = /\/live\//i.test(url) && /\.m3u8/i.test(url);
+  isLive = /\/live\//i.test(url);
   document.getElementById('liveBadge').classList.toggle('visible', isLive);
   document.getElementById('progressWrap').style.opacity = isLive ? '0.4' : '1';
   document.getElementById('progressWrap').style.pointerEvents = isLive ? 'none' : 'auto';
@@ -1207,25 +1256,39 @@ function playStream(url, title) {
   const isHLS = /\.m3u8/i.test(url) || /\/live\//i.test(url);
 
   if (isHLS && typeof Hls !== 'undefined' && Hls.isSupported()) {
-    hlsInstance = new Hls({ enableWorker: true, lowLatencyMode: true, backBufferLength: 60 });
-    hlsInstance.loadSource(url);
-    hlsInstance.attachMedia(v);
-    hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => v.play().catch(()=>{}));
-    hlsInstance.on(Hls.Events.ERROR, (_, data) => {
-      if (data.fatal) showPlayerError('Yayın yüklenemedi: ' + (data.details||'Hata'));
-    });
-  } else if (isHLS && v.canPlayType('application/vnd.apple.mpegurl')) {
-    v.src = url; v.load(); v.play().catch(()=>{});
+    // Önce direkt dene, CORS hatası alırsa proxy ile tekrar dene
+    loadHls(url, false);
+  } else if (v.canPlayType('application/vnd.apple.mpegurl')) {
+    // Safari native HLS
+    v.src = url; v.load();
+    v.play().catch(() => showPlayerError('Yayın açılamadı.', url));
   } else {
-    v.src = url; v.load(); v.play().catch(()=>{});
+    // MP4 / diğer
+    v.src = url; v.load();
+    v.play().catch(() => showPlayerError('Yayın açılamadı.', url));
   }
+
+  v.onerror = () => showPlayerError('Video yüklenemedi. Sunucu hatası veya desteklenmeyen format.', url);
 
   resetUiTimer();
 }
 
-function showPlayerError(msg) {
+function showPlayerError(msg, url) {
   const el = document.getElementById('playerError');
-  el.textContent = '⚠️ ' + msg; el.style.display = 'block';
+  const vlcUrl = 'vlc://' + (url || currentUrl);
+  el.innerHTML = `⚠️ ${msg}
+    <div style="margin-top:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+      <a href="${vlcUrl}" style="background:var(--accent);color:#fff;padding:6px 14px;border-radius:8px;font-size:12px;text-decoration:none;font-weight:600">▶ VLC'de Aç</a>
+      <button onclick="copyUrl()" style="background:var(--s2);color:var(--text);border:1px solid var(--border);padding:6px 14px;border-radius:8px;font-size:12px;cursor:pointer;font-family:inherit">🔗 URL Kopyala</button>
+    </div>`;
+  el.style.display = 'block';
+}
+
+function copyUrl() {
+  navigator.clipboard.writeText(currentUrl).then(() => {
+    const btn = document.querySelector('#playerError button');
+    if (btn) { btn.textContent = '✓ Kopyalandı!'; setTimeout(() => btn.textContent = '🔗 URL Kopyala', 2000); }
+  });
 }
 
 function closePlayer() {
