@@ -1,6 +1,6 @@
 {
   "serverUrl": "http://senin-server-url.com:8080",
-  "announcement": "IPTVHane Premium'a Hoş Geldiniz!",
+  "announcement": "IPTVHane Premium'a Hoş!",
   "showAnnouncement": true,
   "showAd": true,
   "adUrl": "<!DOCTYPE html><html><head><meta name='viewport' content='width=device-width,initial-scale=1.0'><style>body{margin:0;padding:0;background:#0b1120;color:#fff;font-family:sans-serif;display:flex;justify-content:center;align-items:center;height:100vh;text-align:center}.box{border:1px solid #7367f0;padding:25px;border-radius:20px;background:#1e293b;width:80%;box-shadow:0 10px 30px rgba(0,0,0,0.5)}h1{color:#7367f0;margin:0 0 10px 0}p{color:#94a3b8;font-size:16px;margin-bottom:20px}.btn{background:#7367f0;color:#fff;padding:12px 20px;text-decoration:none;border-radius:10px;font-weight:bold;display:inline-block}</style></head><body><div class='box'><h1>IPTVHane</h1><p>En iyi yayın kalitesi ve Premium avantajlar için bize ulaşın.</p><a href='https://wa.me/905319499124' class='btn'>WHATSAPP DESTEK</a></div></body></html>"
